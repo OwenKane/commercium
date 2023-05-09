@@ -5,14 +5,8 @@ import "forge-std/Test.sol";
 import "v2-periphery/interfaces/IUniswapV2Router02.sol";
 
 import "../src/DEXTradeExecutor.sol";
-
-interface WETH {
-    function deposit() external payable;
-    function withdraw(uint wad) external;
-    function transfer(address to, uint value) external returns (bool);
-    function approve(address spender, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
+import "../src/interfaces/IERC20.sol";
+import "../src/interfaces/IWETH.sol";
 
 contract DEXTradeExecutorTest is Test {
     DEXTradeExecutor public tradeExecutor;
@@ -131,6 +125,13 @@ contract DEXTradeExecutorTest is Test {
         tradeExecutor.setProfitTakingToken(wbtc);
         vm.stopPrank();
         assertEq(tradeExecutor.profitTakingToken(), wbtc);
+    }
+
+    function testAccess() public {
+        vm.startPrank(account2);
+        vm.expectRevert("UNAUTHORIZED");
+        tradeExecutor.setProfitTakingToken(badger);
+        vm.stopPrank();
     }
 
     function testSendToken() public {

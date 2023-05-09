@@ -1,17 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "forge-std/Test.sol";
-
 import "v2-periphery/interfaces/IUniswapV2Router02.sol";
+import "./interfaces/IERC20.sol";
 
-interface IERC20 {
-    function approve(address spender, uint256 amount) external returns (bool);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
+import "solmate/auth/Owned.sol";
 
-contract DEXTradeExecutor is Test {
+contract DEXTradeExecutor is Owned {
     struct TradeInstruction {
         address tokenIn;
         address tokenOut;
@@ -21,16 +16,9 @@ contract DEXTradeExecutor is Test {
     }
 
     IUniswapV2Router02 public uniswapRouter;
-    address public owner;
     address public profitTakingToken;
-    address public weth;
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can call this function.");
-        _;
-    }
-
-    constructor(address _uniswapRouter, address _profitTakingToken) {
+    constructor(address _uniswapRouter, address _profitTakingToken) Owned(msg.sender) {
         uniswapRouter = IUniswapV2Router02(_uniswapRouter);
         profitTakingToken = _profitTakingToken;
         owner = msg.sender;
