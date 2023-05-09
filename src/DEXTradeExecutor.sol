@@ -3,8 +3,13 @@ pragma solidity ^0.8.0;
 
 import "v2-periphery/interfaces/IUniswapV2Router02.sol";
 import "./interfaces/IERC20.sol";
-
 import "solmate/auth/Owned.sol";
+
+
+error NoProfit();
+error SlippageExceeded();
+error TokenMismatch();
+error ArrLengthMismatch();
 
 contract DEXTradeExecutor is Owned {
     struct TradeInstruction {
@@ -21,7 +26,6 @@ contract DEXTradeExecutor is Owned {
     constructor(address _uniswapRouter, address _profitTakingToken) Owned(msg.sender) {
         uniswapRouter = IUniswapV2Router02(_uniswapRouter);
         profitTakingToken = _profitTakingToken;
-        owner = msg.sender;
     }
 
     function executeTrade(TradeInstruction[] memory _trades, bool feedOutputIn) public onlyOwner {
@@ -31,14 +35,18 @@ contract DEXTradeExecutor is Owned {
 
         for (uint256 i = 0; i < _trades.length; i++) {
             if(feedOutputIn && i != 0) {
-                require(_trades[i - 1].tokenOut == _trades[i].tokenIn, "Output of previous trade must be input of next trade");
+                // Output of previous trade must be input of next trade
+                if (_trades[i - 1].tokenOut != _trades[i].tokenIn)
+                    revert TokenMismatch();
+
                 _trades[i].amountIn = actualTokensOut;
             }
             valueBeforeTrade += getAmountInProfitToken(_trades[i].tokenIn, _trades[i].amountIn);
             actualTokensOut = swapOnUinswap(_trades[i]);
             valueAfterTrade += getAmountInProfitToken(_trades[i].tokenOut, actualTokensOut);
         }
-        require(valueAfterTrade > valueBeforeTrade, "Trade did not result in profit");
+        if(valueAfterTrade <= valueBeforeTrade)
+            revert NoProfit();
     }
 
     function swapOnUinswap(TradeInstruction memory trade) private returns (uint256) {
@@ -46,10 +54,11 @@ contract DEXTradeExecutor is Owned {
 
         address[] memory path = getPathForToken(trade.tokenIn, trade.tokenOut);
         uint256[] memory amounts = uniswapRouter.getAmountsOut(trade.amountIn, path);
+        
         uint256 amountOut = amounts[amounts.length - 1];
-
         uint256 slippageAmount = (amountOut * trade.slippageTolerance) / 100;
-        require(trade.amountOutMin <= amountOut - slippageAmount, "Slippage exceeded");
+        if (amountOut - slippageAmount < trade.amountOutMin)
+            revert SlippageExceeded();
 
         uint256[] memory results = uniswapRouter.swapExactTokensForTokens(
             trade.amountIn,
@@ -71,7 +80,9 @@ contract DEXTradeExecutor is Owned {
     }
 
     function sendToken(address[] calldata _token, address[] calldata _to, uint256[] calldata _amount) public onlyOwner {
-        require(_token.length == _to.length && _to.length == _amount.length, "Arrays must be of equal length");
+        if (_token.length != _to.length || _to.length != _amount.length)
+            revert ArrLengthMismatch();
+            
         for (uint i = 0; i < _token.length; i++) {
             IERC20(_token[i]).transfer(_to[i], _amount[i]);   
         }

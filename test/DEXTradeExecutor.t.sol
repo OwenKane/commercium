@@ -21,6 +21,8 @@ contract DEXTradeExecutorTest is Test {
     address public account2 = 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045;
     address public wbtcWhale = 0x6daB3bCbFb336b29d06B9C793AEF7eaA57888922;
 
+    bytes4 errorSelector;
+
     function setUp() public {
         vm.deal(address(account1), 100 ether);
         vm.deal(address(account2), 100 ether);
@@ -102,7 +104,33 @@ contract DEXTradeExecutorTest is Test {
         vm.stopPrank();
     }
 
-     function testProfitCheck() public {
+    function testFeedOutputIn() public {
+
+        DEXTradeExecutor.TradeInstruction[] memory trades = new DEXTradeExecutor.TradeInstruction[](2);
+        trades[0] = DEXTradeExecutor.TradeInstruction(
+            address(weth),
+            usdc,
+            .1 ether,
+            0,
+            10
+        );
+
+        trades[1] = DEXTradeExecutor.TradeInstruction(
+            wbtc,
+            badger,
+            .1 ether,
+            0,
+            10
+        );
+
+        vm.startPrank(account1);
+        errorSelector = bytes4(keccak256("TokenMismatch()"));
+        vm.expectRevert(errorSelector);
+        tradeExecutor.executeTrade(trades, true);
+        vm.stopPrank();
+    }
+
+    function testProfitCheck() public {
 
         DEXTradeExecutor.TradeInstruction[] memory trades = new DEXTradeExecutor.TradeInstruction[](1);
         trades[0] = DEXTradeExecutor.TradeInstruction(
@@ -114,7 +142,26 @@ contract DEXTradeExecutorTest is Test {
         );
 
         vm.startPrank(account1);
-        vm.expectRevert("Trade did not result in profit");
+        errorSelector = bytes4(keccak256("NoProfit()"));
+        vm.expectRevert(errorSelector);
+        tradeExecutor.executeTrade(trades, false);
+        vm.stopPrank();
+    }
+    
+    function testSlippage() public {
+
+        DEXTradeExecutor.TradeInstruction[] memory trades = new DEXTradeExecutor.TradeInstruction[](1);
+        trades[0] = DEXTradeExecutor.TradeInstruction(
+            address(weth),
+            wbtc,
+            .1 ether,
+            660000,
+            1
+        );
+
+        vm.startPrank(account1);
+        errorSelector = bytes4(keccak256("SlippageExceeded()"));
+        vm.expectRevert(errorSelector);
         tradeExecutor.executeTrade(trades, false);
         vm.stopPrank();
     }
@@ -153,6 +200,32 @@ contract DEXTradeExecutorTest is Test {
 
         assertEq(weth.balanceOf(address(account1)), accountsWethBalBefore + tradeExecutorWethBalBefore);
         assertEq(weth.balanceOf(address(tradeExecutor)), 0);
+    }
+
+    function testSendBadTokenArr() public {
+        address[] memory token = new address[](2);
+        token[0] = address(weth);
+        token[1] = usdc;
+
+        uint256[] memory amount = new uint256[](1);
+        amount[0] = 1;
+
+        address[] memory to = new address[](1);
+        to[0] = account1;
+
+        vm.startPrank(account1);
+        errorSelector = bytes4(keccak256("ArrLengthMismatch()"));
+        vm.expectRevert(errorSelector);
+        tradeExecutor.sendToken(token, to, amount);
+        vm.stopPrank();
+    }
+
+    function testOwnerChange() public {
+        vm.startPrank(account1);
+        assertEq(tradeExecutor.owner(), account1);
+        tradeExecutor.transferOwnership(account2);
+        assertEq(tradeExecutor.owner(), account2);
+        vm.stopPrank();
     }
 
     function getPathForToken(address tokenIn, address tokenOut) private pure returns (address[] memory) {
